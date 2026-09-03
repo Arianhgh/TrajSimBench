@@ -1,0 +1,10 @@
+name: geolife
+version: v1
+enabled: true
+raw_path: data/raw/geolife
+min_points: 2
+projected_crs: EPSG:32650
+has_timestamps: true
+deduplicate_policy: drop_consecutive
+source_license: official GeoLife terms required
+redistribution_policy: raw input remains outside Git

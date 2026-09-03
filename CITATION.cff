@@ -1,0 +1,10 @@
+cff-version: 1.2.0
+title: "TrajSimBench"
+message: "If you use TrajSimBench, please cite this repository."
+type: software
+authors:
+  - name: "TrajSimBench contributors"
+repository-code: "https://github.com/example/trajsimbench"
+license: MIT
+version: "0.1.0"
+date-released: 2026-09-03

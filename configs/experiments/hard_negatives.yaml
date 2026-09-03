@@ -1,0 +1,12 @@
+{
+  "schema_version": "1.0",
+  "experiment_id": "hard_negatives",
+  "dataset": "synthetic",
+  "dataset_version": "tiny-v1",
+  "scale_tier": "Tiny",
+  "seed_list": [7],
+  "methods": [{"name": "euclidean", "config": {}}],
+  "tasks": [{"name": "retrieval", "config": {"negative_policies": [{"name": "same_od", "threshold": 0.1}]} }],
+  "k_values": [1, 5, 10],
+  "output_root": "results"
+}

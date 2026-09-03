@@ -1,0 +1,7 @@
+name: germany
+version: v1
+enabled: false
+status: requires_source_decision
+projected_crs: EPSG:25832
+min_points: 2
+has_timestamps: true

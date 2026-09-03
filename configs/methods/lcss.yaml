@@ -1,0 +1,18 @@
+schema_version: "1"
+name: lcss
+version: "1.0.0"
+implementation: trajsimbench.measures.classical.lcss.LCSSMeasure
+capabilities:
+  learned: false
+  supports_batch: true
+  supports_encoding: false
+  supports_index: false
+  symmetric: true
+  requires_timestamps: false
+config:
+  epsilon: 1.0
+  delta_mode: index
+  delta: null
+  time_delta_s: null
+source: "TrajSimBench classical measures"
+citation: null

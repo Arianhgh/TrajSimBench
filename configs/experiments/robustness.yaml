@@ -1,0 +1,13 @@
+{
+  "schema_version": "1.0",
+  "experiment_id": "robustness",
+  "dataset": "synthetic",
+  "dataset_version": "tiny-v1",
+  "scale_tier": "Tiny",
+  "seed_list": [7],
+  "methods": [{"name": "euclidean", "config": {}}],
+  "tasks": ["diagnostics", "robustness"],
+  "perturbations": [{"name": "gps_noise", "severities": [0.0, 0.5, 1.0], "unit": "fraction"}],
+  "k_values": [1, 5],
+  "output_root": "results"
+}

@@ -1,0 +1,15 @@
+schema_version: "1"
+name: edr
+version: "1.0.0"
+implementation: trajsimbench.measures.classical.edr.EDRMeasure
+capabilities:
+  learned: false
+  supports_batch: true
+  supports_encoding: false
+  supports_index: false
+  symmetric: true
+  requires_timestamps: false
+config:
+  epsilon: 1.0
+source: "TrajSimBench classical measures"
+citation: null

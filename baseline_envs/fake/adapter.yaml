@@ -1,0 +1,6 @@
+protocol_version: "1.0"
+name: fake
+operation: encode
+cpu_only: true
+description: deterministic protocol fixture; not a learned baseline
+

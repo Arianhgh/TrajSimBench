@@ -1,0 +1,7 @@
+schema_version: "1.0"
+name: v1
+tiers:
+  tiny: {database_count: 1000, query_count: 100}
+  standard: {database_count: 10000, query_count: 1000}
+  medium: {database_count: 50000, query_count: 500}
+  large: {database_count: 100000, query_count: 200}

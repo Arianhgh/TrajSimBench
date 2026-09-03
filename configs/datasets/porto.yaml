@@ -1,0 +1,17 @@
+name: porto
+version: v1
+enabled: true
+raw_path: data/raw/porto.csv
+polyline_field: POLYLINE
+trip_id_field: TRIP_ID
+timestamp_field: TIMESTAMP
+timestamp_semantics: start_time_plus_interval
+sampling_interval_s: 15
+missing_data_sentinel: ""
+bounding_box: [-9.3, 41.0, -8.3, 42.0]
+min_points: 2
+max_points: 10000
+projected_crs: EPSG:32629
+has_timestamps: true
+source_license: source terms required
+redistribution_policy: raw input remains outside Git

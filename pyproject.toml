@@ -1,0 +1,80 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "trajsimbench"
+version = "0.1.0"
+description = "Reproducible, CPU-first trajectory similarity benchmark foundations"
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+license = { file = "LICENSE" }
+authors = [{ name = "TrajSimBench contributors" }]
+dependencies = [
+  "numpy>=1.26,<3",
+  "pandas>=2.1,<3",
+  "pyarrow>=14,<22",
+  "pydantic>=2.6,<3",
+  "PyYAML>=6.0,<7",
+  "scipy>=1.11,<2",
+  "scikit-learn>=1.3,<2",
+  "duckdb>=1.0,<2",
+  "pyproj>=3.6,<4",
+  "shapely>=2.0,<3",
+  "typer>=0.12,<1",
+  "rich>=13,<15",
+  "psutil>=5.9,<8",
+  "platformdirs>=4,<5",
+]
+
+[project.optional-dependencies]
+geo = ["geopandas>=0.14,<2"]
+speed = ["numba>=0.59,<1"]
+index = ["faiss-cpu>=1.8,<2"]
+dashboard = ["streamlit>=1.35,<2", "plotly>=5.20,<7", "pydeck>=0.9,<1"]
+learned = ["torch>=2.2,<3"]
+dev = ["pytest>=8,<9", "pytest-cov>=5,<8", "hypothesis>=6,<7", "ruff>=0.6,<1", "mypy>=1.10,<2", "types-PyYAML>=6,<7", "pre-commit>=3.7,<5"]
+docs = ["mkdocs>=1.6,<2", "mkdocs-material>=9.5,<10"]
+
+[project.scripts]
+trajbench = "trajsimbench.cli:app"
+
+[tool.setuptools.packages.find]
+include = ["trajsimbench*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+markers = [
+  "slow: tests that are intentionally slower than the CPU smoke suite",
+  "integration: cross-module integration tests",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+exclude = ["IMPLEMENTATION_PLAN.md", "tmp", "data/raw", "data/interim", "data/processed"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.mypy]
+python_version = "3.11"
+check_untyped_defs = true
+ disallow_untyped_defs = false
+no_implicit_optional = true
+warn_redundant_casts = true
+ warn_unused_ignores = false
+ignore_missing_imports = true
+
+[tool.coverage.run]
+source = ["trajsimbench"]
+omit = [
+  "trajsimbench/cli.py",
+  "trajsimbench/dashboard/*",
+  "trajsimbench/measures/learned/*",
+]
+
+[tool.coverage.report]
+exclude_lines = ["pragma: no cover", "if TYPE_CHECKING:"]
+fail_under = 85

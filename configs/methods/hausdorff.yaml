@@ -1,0 +1,14 @@
+schema_version: "1"
+name: hausdorff
+version: "1.0.0"
+implementation: trajsimbench.measures.classical.hausdorff.HausdorffMeasure
+capabilities:
+  learned: false
+  supports_batch: true
+  supports_encoding: false
+  supports_index: false
+  symmetric: true
+  requires_timestamps: false
+config: {}
+source: "TrajSimBench classical measures"
+citation: null

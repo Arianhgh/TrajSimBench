@@ -1,0 +1,78 @@
+{
+  "schema_version": "1.0",
+  "notions": [
+    {
+      "notion_id": "geometric_shape",
+      "version": "1.0",
+      "definition": "Similarity of projected polyline shape independent of absolute placement.",
+      "exclusions": ["Does not assert the same geographic location."],
+      "properties": {"spatial": true, "location": false, "route": true, "direction": false, "temporal": false, "sampling": true, "observation": true},
+      "expected_outcomes": {"gps_noise": "preserve", "gps_drift": "preserve", "random_point_loss": "preserve", "contiguous_outage": "preserve", "sampling_reduction": "preserve", "spatial_quantization": "small_change", "temporal_jitter": "preserve", "speed_distortion": "preserve", "truncation": "small_change", "reversal": "preserve", "spatial_translation": "preserve", "free_space_detour": "small_change"},
+      "tie_tolerance": 1e-9,
+      "minimum_margin": 0.0,
+      "citations": ["IMPLEMENTATION_PLAN.md Section 9"],
+      "decision_notes": ["Translation is intentionally preserved for shape but not absolute route."],
+      "status": "active"
+    },
+    {
+      "notion_id": "absolute_geographic_route",
+      "version": "1.0",
+      "definition": "Similarity of a route in its absolute geographic location.",
+      "properties": {"spatial": true, "location": true, "route": true, "direction": false, "temporal": false, "sampling": true, "observation": false},
+      "expected_outcomes": {"gps_noise": "preserve", "gps_drift": "preserve", "random_point_loss": "preserve", "contiguous_outage": "preserve", "sampling_reduction": "preserve", "spatial_quantization": "small_change", "temporal_jitter": "preserve", "speed_distortion": "preserve", "truncation": "small_change", "reversal": "depends", "spatial_translation": "change", "free_space_detour": "change"},
+      "tie_tolerance": 0.0,
+      "minimum_margin": 0.0,
+      "citations": ["IMPLEMENTATION_PLAN.md Section 9"],
+      "decision_notes": ["Absolute route and shape are separate notions; translated copies can reverse the preferred candidate."],
+      "status": "active"
+    },
+    {
+      "notion_id": "temporal_dynamics",
+      "version": "1.0",
+      "definition": "Similarity of timing and speed dynamics.",
+      "properties": {"spatial": false, "location": false, "route": false, "direction": true, "temporal": true, "sampling": false, "observation": true},
+      "expected_outcomes": {"gps_noise": "preserve", "gps_drift": "preserve", "random_point_loss": "preserve", "contiguous_outage": "preserve", "sampling_reduction": "preserve", "spatial_quantization": "preserve", "temporal_jitter": "change", "speed_distortion": "change", "truncation": "small_change", "reversal": "change", "spatial_translation": "preserve", "free_space_detour": "depends"},
+      "tie_tolerance": 0.0,
+      "minimum_margin": 0.0,
+      "citations": ["IMPLEMENTATION_PLAN.md Section 9"],
+      "decision_notes": ["Spatial transformations retain timestamp values."],
+      "status": "active"
+    },
+    {
+      "notion_id": "same_underlying_movement",
+      "version": "1.0",
+      "definition": "Whether two observations can plausibly be views of one movement.",
+      "properties": {"spatial": true, "location": true, "route": true, "direction": true, "temporal": true, "sampling": true, "observation": true},
+      "expected_outcomes": {"gps_noise": "preserve", "gps_drift": "preserve", "random_point_loss": "preserve", "contiguous_outage": "preserve", "sampling_reduction": "preserve", "spatial_quantization": "small_change", "temporal_jitter": "small_change", "speed_distortion": "change", "truncation": "change", "reversal": "change", "spatial_translation": "change", "free_space_detour": "change"},
+      "tie_tolerance": 0.0,
+      "minimum_margin": 0.0,
+      "citations": ["IMPLEMENTATION_PLAN.md Section 9"],
+      "decision_notes": ["Observation equivalence is not interchangeable with geometric shape."],
+      "status": "active"
+    },
+    {
+      "notion_id": "direction_aware_movement",
+      "version": "1.0",
+      "definition": "Similarity that distinguishes the ordered direction of movement.",
+      "properties": {"spatial": true, "location": true, "route": true, "direction": true, "temporal": true, "sampling": true, "observation": true},
+      "expected_outcomes": {"gps_noise": "preserve", "gps_drift": "preserve", "random_point_loss": "preserve", "contiguous_outage": "preserve", "sampling_reduction": "preserve", "spatial_quantization": "small_change", "temporal_jitter": "small_change", "speed_distortion": "change", "truncation": "small_change", "reversal": "change", "spatial_translation": "change", "free_space_detour": "change"},
+      "tie_tolerance": 0.0,
+      "minimum_margin": 0.0,
+      "citations": ["IMPLEMENTATION_PLAN.md Section 9"],
+      "decision_notes": ["Reversal re-bases increasing timestamps by default while reversing segment durations."],
+      "status": "active"
+    },
+    {
+      "notion_id": "route_path_structure",
+      "version": "1.0",
+      "definition": "Similarity of ordered path geometry and detour structure.",
+      "properties": {"spatial": true, "location": false, "route": true, "direction": true, "temporal": false, "sampling": true, "observation": false},
+      "expected_outcomes": {"gps_noise": "preserve", "gps_drift": "preserve", "random_point_loss": "preserve", "contiguous_outage": "preserve", "sampling_reduction": "preserve", "spatial_quantization": "small_change", "temporal_jitter": "preserve", "speed_distortion": "preserve", "truncation": "small_change", "reversal": "depends", "spatial_translation": "preserve", "free_space_detour": "change"},
+      "tie_tolerance": 0.0,
+      "minimum_margin": 0.0,
+      "citations": ["IMPLEMENTATION_PLAN.md Section 9"],
+      "decision_notes": ["Free-space route overlap is resampled-path coverage, not road-segment overlap."],
+      "status": "active"
+    }
+  ]
+}

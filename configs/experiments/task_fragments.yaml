@@ -1,0 +1,20 @@
+{
+  "schema_version": "1.0",
+  "purpose": "Task and notion fragments consumed by a later core runner.",
+  "notions_file": "configs/notions/v1.yaml",
+  "task_fragments": {
+    "oracle": {"exclude_self": true, "tie_tolerance": 0.0, "lower_is_more_similar": true},
+    "equivalence": {"perturbations": [{"name": "sampling_reduction", "mode": "ratio", "severity": 0.75}, {"name": "gps_noise", "severity": 5.0}, {"name": "temporal_jitter", "severity": 1.0}]},
+    "diagnostics": {"minimum_yield": 0.50, "families": ["downsampled_vs_distinct", "noise_scale", "detour_scale", "translated_vs_nearby", "original_vs_reversed", "time_warp", "same_od_route", "partial_overlap"]},
+    "negatives": {
+      "route_overlap_definition": "resampled_path_coverage_v1",
+      "max_candidates_examined": 1000,
+      "minimum_yield": 0.10,
+      "same_od": {"origin_radius_m": 100.0, "destination_radius_m": 100.0, "max_route_overlap": 0.50, "overlap_tolerance_m": 25.0},
+      "nearby_shape": {"geographic_nearness_radius_m": 1000.0, "min_shape_distance": 0.15, "max_shape_distance": 2.0},
+      "translated_shape": {"min_translation_m": 100.0, "max_shape_distance": 0.10},
+      "partial_overlap": {"min_overlap": 0.20, "max_overlap": 0.80, "endpoint_radius_m": 500.0, "overlap_tolerance_m": 25.0},
+      "same_route_temporal": {"max_shape_distance": 0.10, "min_temporal_distance": 0.25}
+    }
+  }
+}

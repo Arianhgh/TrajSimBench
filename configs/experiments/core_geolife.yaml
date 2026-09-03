@@ -1,0 +1,12 @@
+{
+  "schema_version": "1.0",
+  "experiment_id": "core_geolife",
+  "dataset": "geolife",
+  "dataset_version": "v1",
+  "scale_tier": "Tiny",
+  "seed_list": [7],
+  "methods": [{"name": "euclidean", "config": {"resample_count": 32}}, {"name": "dtw", "config": {"normalization": "none"}}],
+  "tasks": ["oracle", "equivalence", "retrieval"],
+  "k_values": [1, 5, 10],
+  "output_root": "results"
+}

@@ -1,0 +1,20 @@
+{
+  "schema_version": "1.0",
+  "experiment_id": "tiny_synthetic_cpu",
+  "description": "Deterministic CPU-only Tiny smoke benchmark",
+  "dataset": "synthetic",
+  "dataset_version": "tiny-v1",
+  "split": "test",
+  "scale_tier": "Tiny",
+  "tiny_counts": {"database": 1000, "queries": 100},
+  "seed_list": [7],
+  "methods": [
+    {"name": "euclidean", "version": "cpu-mvp", "config": {"resample_count": 12}},
+    {"name": "dtw", "version": "cpu-mvp", "config": {"normalization": "none"}}
+  ],
+  "tasks": ["retrieval", "agreement", "robustness"],
+  "k_values": [1, 5, 10],
+  "empty_relevance_policy": "skip",
+  "chunk_size": 128,
+  "output_root": "results"
+}

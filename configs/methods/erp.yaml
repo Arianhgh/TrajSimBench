@@ -1,0 +1,16 @@
+schema_version: "1"
+name: erp
+version: "1.0.0"
+implementation: trajsimbench.measures.classical.erp.ERPMeasure
+capabilities:
+  learned: false
+  supports_batch: true
+  supports_encoding: false
+  supports_index: false
+  symmetric: true
+  requires_timestamps: false
+config:
+  gap_point: [0.0, 0.0]
+  normalization: none
+source: "TrajSimBench classical measures"
+citation: null

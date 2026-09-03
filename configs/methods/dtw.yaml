@@ -1,0 +1,16 @@
+schema_version: "1"
+name: dtw
+version: "1.0.0"
+implementation: trajsimbench.measures.classical.dtw.DTWMeasure
+capabilities:
+  learned: false
+  supports_batch: true
+  supports_encoding: false
+  supports_index: false
+  symmetric: true
+  requires_timestamps: false
+config:
+  normalization: none
+  window: null
+source: "TrajSimBench classical measures"
+citation: null

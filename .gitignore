@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+
+# Local/restricted data and generated artifacts
+data/raw/*
+!data/raw/.gitkeep
+data/interim/*
+!data/interim/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+results/*
+!results/.gitkeep
+analysis*/
+*.parquet
+*.npy
+*.npz
+*.provenance.json
+
+# Local machine state
+tmp/
+.env
+.DS_Store
+*.log

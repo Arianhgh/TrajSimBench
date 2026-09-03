@@ -1,0 +1,10 @@
+name: synthetic
+version: v1
+enabled: true
+projected_crs: EPSG:32633
+min_points: 1
+has_timestamps: true
+deduplicate_policy: preserve
+source_name: TrajSimBench generated fixture
+source_license: MIT
+redistribution_policy: redistributable

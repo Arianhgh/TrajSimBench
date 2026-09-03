@@ -1,0 +1,15 @@
+schema_version: "1"
+name: euclidean
+version: "1.0.0"
+implementation: trajsimbench.measures.classical.euclidean.EuclideanMeasure
+capabilities:
+  learned: false
+  supports_batch: true
+  supports_encoding: false
+  supports_index: false
+  symmetric: true
+  requires_timestamps: false
+config:
+  n_samples: 100
+source: "TrajSimBench classical measures"
+citation: null
