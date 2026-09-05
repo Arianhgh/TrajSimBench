@@ -23,6 +23,8 @@ analysis*/
 # Keep the source package tracked; only generated analysis output is ignored.
 !trajsimbench/analysis/
 !trajsimbench/analysis/**
+# Keep import cache files from making experiment provenance appear dirty.
+trajsimbench/analysis/__pycache__/
 *.parquet
 *.npy
 *.npz
