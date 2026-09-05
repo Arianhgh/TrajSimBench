@@ -15,6 +15,7 @@ min_points: 2
 max_points: 10000
 projected_crs: EPSG:32629
 has_timestamps: true
+streaming: true
 split_seed: 2025
 query_database_seed: 2025
 retrieval_scales: [tiny, standard, medium, large]

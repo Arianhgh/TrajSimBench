@@ -11,18 +11,28 @@ import ast
 import csv
 import hashlib
 import json
+import os
+import shutil
+import sqlite3
+import tempfile
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 import numpy as np
 
-from trajsimbench.data.checksums import sha256_file
+from trajsimbench.data.checksums import sha256_file, write_checksums
 from trajsimbench.data.dataset import write_canonical_dataset
 from trajsimbench.data.loaders.base import BaseLoader, LoaderInspection, PreparationResult
+from trajsimbench.data.projection import project_coordinates
 from trajsimbench.data.schema import TrajectoryInput
-from trajsimbench.data.splitting import SCALE_LIMITS, make_split_bundle, stable_id_order
+from trajsimbench.data.splitting import (
+    SCALE_LIMITS,
+    SPLIT_ALGORITHM_VERSION,
+    make_split_bundle,
+    stable_id_order,
+)
 
 
 def _timestamp(value: Any) -> float | None:
@@ -121,6 +131,307 @@ def _preprocessing_hash(settings: Mapping[str, Any]) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _valid_porto_rows(
+    raw_path: Path, settings: Mapping[str, Any], inspection: LoaderInspection
+) -> Iterator[tuple[int, str, np.ndarray, str | None, str | None]]:
+    """Yield validated raw rows without retaining the full source in memory."""
+
+    polyline_field = str(settings.get("polyline_field", "POLYLINE"))
+    trip_id_field = str(settings.get("trip_id_field", "TRIP_ID"))
+    timestamp_field = settings.get("timestamp_field")
+    sentinel = settings.get("missing_data_sentinel")
+    minimum = int(settings.get("min_points", 2))
+    maximum = settings.get("max_points")
+    bbox = settings.get("bounding_box")
+    with raw_path.open("r", encoding=str(settings.get("encoding", "utf-8")), newline="") as handle:
+        reader = csv.DictReader(handle)
+        if reader.fieldnames is None or polyline_field not in reader.fieldnames:
+            inspection.reject("missing_polyline_field")
+            inspection.total_records = 1
+            return
+        for row_number, row in enumerate(reader, 2):
+            inspection.total_records += 1
+            raw_polyline = row.get(polyline_field, "") or ""
+            coordinates = _polyline(raw_polyline, sentinel)
+            if coordinates is None:
+                inspection.reject("malformed_or_missing_polyline")
+                continue
+            if len(coordinates) < minimum:
+                inspection.reject("too_few_points")
+                continue
+            if maximum is not None and len(coordinates) > int(maximum):
+                inspection.reject("too_many_points")
+                continue
+            if not np.isfinite(coordinates).all():
+                inspection.reject("non_finite_coordinate")
+                continue
+            if np.any((coordinates[:, 0] < -180) | (coordinates[:, 0] > 180)) or np.any(
+                (coordinates[:, 1] < -90) | (coordinates[:, 1] > 90)
+            ):
+                inspection.reject("coordinate_out_of_range")
+                continue
+            if bbox is not None:
+                west, south, east, north = map(float, bbox)
+                if (
+                    np.any(coordinates[:, 0] < west)
+                    or np.any(coordinates[:, 0] > east)
+                    or np.any(coordinates[:, 1] < south)
+                    or np.any(coordinates[:, 1] > north)
+                ):
+                    inspection.reject("outside_configured_bounding_box")
+                    continue
+            timestamp = _timestamp(row.get(str(timestamp_field))) if timestamp_field else None
+            semantics = str(settings.get("timestamp_semantics", "unavailable"))
+            if timestamp is not None and semantics in {"start_time_plus_interval", "start_time_15s"}:
+                interval = float(settings.get("sampling_interval_s", 15.0))
+                points = np.column_stack(
+                    (coordinates, timestamp + np.arange(len(coordinates), dtype=np.float64) * interval)
+                )
+            elif timestamp is not None:
+                points = np.column_stack((coordinates, np.full(len(coordinates), timestamp)))
+            else:
+                points = coordinates
+            source_id = str(row.get(trip_id_field) or row.get("TRIP_ID") or f"row-{row_number}")
+            user_id = row.get(str(settings.get("user_id_field", "user_id")))
+            mode = row.get(str(settings.get("mobility_mode_field", "MISSING")))
+            inspection.accepted_records += 1
+            yield row_number, source_id, points, str(user_id) if user_id else None, str(mode) if mode else None
+
+
+def _rank(seed: int, value: str) -> bytes:
+    return hashlib.sha256(f"{SPLIT_ALGORITHM_VERSION}:{seed}:{value}".encode()).digest()
+
+
+def _write_id_array(cursor: sqlite3.Cursor, path: Path, query: str, parameters: tuple[Any, ...] = ()) -> None:
+    np.save(path, np.asarray([row[0] for row in cursor.execute(query, parameters)], dtype=str), allow_pickle=False)
+
+
+def _assign_partition(
+    cursor: sqlite3.Cursor, *, column: str, order_by: str, counts: tuple[int, int, int]
+) -> None:
+    labels = ("train", "val", "test")
+    boundaries = (counts[0], counts[0] + counts[1])
+    rows = cursor.execute(f"SELECT row_number FROM records ORDER BY {order_by}").fetchall()
+    assignments = [
+        (labels[0] if index < boundaries[0] else labels[1] if index < boundaries[1] else labels[2], row[0])
+        for index, row in enumerate(rows)
+    ]
+    cursor.executemany(f"UPDATE records SET {column} = ? WHERE row_number = ?", assignments)
+
+
+def _prepare_streaming_porto(
+    raw_path: Path, output_path: Path, settings: Mapping[str, Any]
+) -> PreparationResult:
+    """Prepare full Porto on constrained hardware without materializing all trajectories in RAM."""
+
+    destination = output_path.resolve()
+    if destination.exists():
+        raise FileExistsError(f"processed dataset already exists: {destination}")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary = Path(tempfile.mkdtemp(prefix=f".{destination.name}.", dir=destination.parent))
+    index_path = temporary / "records.sqlite"
+    inspection = LoaderInspection(raw_path)
+    try:
+        connection = sqlite3.connect(index_path)
+        cursor = connection.cursor()
+        cursor.execute(
+            "CREATE TABLE records (row_number INTEGER PRIMARY KEY, trajectory_id TEXT NOT NULL, "
+            "source_id TEXT NOT NULL, point_count INTEGER NOT NULL, start_time REAL NOT NULL, "
+            "split_rank BLOB NOT NULL, retrieval_rank BLOB NOT NULL, standard TEXT, temporal TEXT, "
+            "duplicate_source INTEGER NOT NULL DEFAULT 0)"
+        )
+        cursor.execute("CREATE TABLE source_counts (source_id TEXT PRIMARY KEY, count INTEGER NOT NULL)")
+        split_seed = int(settings.get("split_seed", 2025))
+        retrieval_seed = int(settings.get("query_database_seed", 2025))
+        total_points = 0
+        for row_number, source_id, points, _user_id, _mode in _valid_porto_rows(
+            raw_path, settings, inspection
+        ):
+            trajectory_id = f"porto:row-{row_number}"
+            cursor.execute(
+                "INSERT INTO records (row_number, trajectory_id, source_id, point_count, start_time, "
+                "split_rank, retrieval_rank) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    row_number,
+                    trajectory_id,
+                    source_id,
+                    len(points),
+                    float(points[0, 2]),
+                    _rank(split_seed, trajectory_id),
+                    _rank(retrieval_seed, trajectory_id),
+                ),
+            )
+            cursor.execute(
+                "INSERT INTO source_counts (source_id, count) VALUES (?, 1) "
+                "ON CONFLICT(source_id) DO UPDATE SET count = count + 1",
+                (source_id,),
+            )
+            total_points += len(points)
+        connection.commit()
+        count = int(cursor.execute("SELECT COUNT(*) FROM records").fetchone()[0])
+        if not count:
+            raise ValueError(f"Porto preparation produced no valid trajectories: {inspection.rejected_by_reason}")
+        duplicate_count = int(
+            cursor.execute("SELECT COALESCE(SUM(count - 1), 0) FROM source_counts WHERE count > 1").fetchone()[0]
+        )
+        if duplicate_count:
+            inspection.details["duplicate_source_ids"] = duplicate_count
+            cursor.execute(
+                "UPDATE records SET duplicate_source = 1 WHERE source_id IN "
+                "(SELECT source_id FROM source_counts WHERE count > 1)"
+            )
+        train_count = int(round(count * 0.7))
+        val_count = int(round(count * 0.1))
+        _assign_partition(
+            cursor,
+            column="standard",
+            order_by="split_rank, trajectory_id",
+            counts=(train_count, val_count, count - train_count - val_count),
+        )
+        _assign_partition(
+            cursor,
+            column="temporal",
+            order_by="start_time, row_number",
+            counts=(train_count, val_count, count - train_count - val_count),
+        )
+        connection.commit()
+
+        points_path = temporary / "points.npy"
+        offsets_path = temporary / "offsets.npy"
+        canonical_points = np.lib.format.open_memmap(
+            points_path, mode="w+", dtype=np.float64, shape=(total_points, 5)
+        )
+        offsets = np.lib.format.open_memmap(offsets_path, mode="w+", dtype=np.int64, shape=(count + 1,))
+        offsets[0] = 0
+        metadata_rows: list[dict[str, Any]] = []
+        metadata_path = temporary / "metadata.jsonl"
+        point_offset = 0
+        lon_min, lat_min = float("inf"), float("inf")
+        lon_max, lat_max = float("-inf"), float("-inf")
+        with metadata_path.open("w", encoding="utf-8") as metadata_handle:
+            for index, (row_number, _source_id, points, _user_id, _mode) in enumerate(
+                _valid_porto_rows(raw_path, settings, LoaderInspection(raw_path))
+            ):
+                row = cursor.execute(
+                    "SELECT trajectory_id, source_id, standard, duplicate_source FROM records WHERE row_number = ?",
+                    (row_number,),
+                ).fetchone()
+                if row is None:
+                    continue
+                longitude, latitude = points[:, 0], points[:, 1]
+                x_m, y_m = project_coordinates(longitude, latitude, str(settings.get("projected_crs", "EPSG:32629")))
+                timestamps = points[:, 2]
+                canonical = np.column_stack((longitude, latitude, x_m, y_m, timestamps))
+                canonical_points[point_offset : point_offset + len(canonical)] = canonical
+                offsets[index + 1] = point_offset + len(canonical)
+                start_time, end_time = float(timestamps[0]), float(timestamps[-1])
+                length_m = float(np.linalg.norm(np.diff(canonical[:, 2:4], axis=0), axis=1).sum())
+                metadata_rows.append(
+                    {
+                        "trajectory_idx": index,
+                        "trajectory_id": row[0],
+                        "dataset": "porto",
+                        "source_id": row[1],
+                        "user_id": None,
+                        "start_time_s": start_time,
+                        "end_time_s": end_time,
+                        "mobility_mode": None,
+                        "length_m": length_m,
+                        "duration_s": end_time - start_time,
+                        "num_points": len(canonical),
+                        "split": row[2],
+                        "crs_projected": str(settings.get("projected_crs", "EPSG:32629")),
+                        "quality_flags": '["duplicate_source_id"]' if row[3] else "[]",
+                    }
+                )
+                if len(metadata_rows) >= 10_000:
+                    for metadata in metadata_rows:
+                        metadata_handle.write(json.dumps(metadata, sort_keys=True) + "\n")
+                    metadata_rows.clear()
+                point_offset += len(canonical)
+                lon_min, lon_max = min(lon_min, float(longitude.min())), max(lon_max, float(longitude.max()))
+                lat_min, lat_max = min(lat_min, float(latitude.min())), max(lat_max, float(latitude.max()))
+            for metadata in metadata_rows:
+                metadata_handle.write(json.dumps(metadata, sort_keys=True) + "\n")
+        canonical_points.flush()
+        offsets.flush()
+        if point_offset != total_points:
+            raise RuntimeError("streaming Porto pass disagreed with its indexed point count")
+
+        import pandas as pd
+
+        pd.read_json(metadata_path, lines=True).to_parquet(temporary / "metadata.parquet", index=False)
+        metadata_path.unlink()
+        splits_root = temporary / "splits"
+        for split_name, column, order_by in (
+            ("standard", "standard", "split_rank, trajectory_id"),
+            ("temporal", "temporal", "start_time, row_number"),
+        ):
+            split_dir = splits_root / split_name
+            split_dir.mkdir(parents=True, exist_ok=True)
+            for partition in ("train", "val", "test"):
+                _write_id_array(
+                    cursor,
+                    split_dir / f"{partition}.npy",
+                    f"SELECT trajectory_id FROM records WHERE {column} = ? ORDER BY {order_by}",
+                    (partition,),
+                )
+        for entry in settings.get("retrieval_scales", ()):
+            if not isinstance(entry, str) or entry not in SCALE_LIMITS:
+                raise ValueError("streaming Porto preparation requires named retrieval scales")
+            database_count, query_count = SCALE_LIMITS[entry]
+            test_count = int(cursor.execute("SELECT COUNT(*) FROM records WHERE standard = 'test'").fetchone()[0])
+            if database_count + query_count > test_count:
+                raise ValueError(f"retrieval scale {entry!r} exceeds the standard test partition")
+            identifiers = [
+                row[0]
+                for row in cursor.execute(
+                    "SELECT trajectory_id FROM records WHERE standard = 'test' "
+                    "ORDER BY retrieval_rank, trajectory_id LIMIT ?",
+                    (database_count + query_count,),
+                )
+            ]
+            split_dir = splits_root / f"retrieval_{entry}"
+            split_dir.mkdir(parents=True, exist_ok=True)
+            np.save(split_dir / "database.npy", np.asarray(identifiers[:database_count], dtype=str), allow_pickle=False)
+            np.save(split_dir / "query.npy", np.asarray(identifiers[database_count:], dtype=str), allow_pickle=False)
+        manifest = {
+            "schema_version": "1.0",
+            "dataset": "porto",
+            "version": str(settings.get("version", "v1")),
+            "source_name": "Taxi Service Trajectory - Prediction Challenge, ECML PKDD 2015",
+            "source_url": settings.get("source_url"),
+            "source_license": settings.get("source_license"),
+            "redistribution_policy": "raw input remains outside Git",
+            "raw_checksums": {raw_path.name: sha256_file(raw_path)},
+            "preprocessing_config_hash": str(
+                settings.get("preprocessing_config_hash") or _preprocessing_hash(settings)
+            ),
+            "code_version": None,
+            "projected_crs": str(settings.get("projected_crs", "EPSG:32629")),
+            "projected_crs_policy": None,
+            "point_columns": ["lon_deg", "lat_deg", "x_m", "y_m", "timestamp_s"],
+            "point_features": {},
+            "trajectory_count": count,
+            "point_count": total_points,
+            "bounding_box_wgs84": [lon_min, lat_min, lon_max, lat_max],
+            "created_at_utc": datetime.now(UTC).isoformat(),
+        }
+        (temporary / "dataset.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        connection.close()
+        index_path.unlink()
+        write_checksums(temporary)
+        from trajsimbench.data.validation import validate_dataset
+
+        report = validate_dataset(temporary, min_points=int(settings.get("min_points", 2)))
+        report.raise_if_invalid()
+        os.replace(temporary, destination)
+        return PreparationResult(destination, inspection)
+    except Exception:
+        shutil.rmtree(temporary, ignore_errors=True)
+        raise
+
+
 class PortoLoader(BaseLoader):
     name = "porto"
 
@@ -137,93 +448,29 @@ class PortoLoader(BaseLoader):
         self, raw_path: Path, **kwargs: Any
     ) -> tuple[list[TrajectoryInput], LoaderInspection]:
         settings = self._settings(**kwargs)
-        polyline_field = str(settings.get("polyline_field", "POLYLINE"))
-        trip_id_field = str(settings.get("trip_id_field", "TRIP_ID"))
-        timestamp_field = settings.get("timestamp_field")
-        sentinel = settings.get("missing_data_sentinel")
-        minimum = int(settings.get("min_points", 2))
-        maximum = settings.get("max_points")
-        bbox = settings.get("bounding_box")
         records: list[TrajectoryInput] = []
         inspection = LoaderInspection(raw_path)
         source_id_counts: dict[str, int] = {}
-        with raw_path.open(
-            "r", encoding=str(settings.get("encoding", "utf-8")), newline=""
-        ) as handle:
-            reader = csv.DictReader(handle)
-            if reader.fieldnames is None or polyline_field not in reader.fieldnames:
-                inspection.reject("missing_polyline_field")
-                inspection.total_records = 1
-                return records, inspection
-            for row_number, row in enumerate(reader, 2):
-                inspection.total_records += 1
-                raw_polyline = row.get(polyline_field, "") or ""
-                coordinates = _polyline(raw_polyline, sentinel)
-                if coordinates is None:
-                    inspection.reject("malformed_or_missing_polyline")
-                    continue
-                if len(coordinates) < minimum:
-                    inspection.reject("too_few_points")
-                    continue
-                if maximum is not None and len(coordinates) > int(maximum):
-                    inspection.reject("too_many_points")
-                    continue
-                if not np.isfinite(coordinates).all():
-                    inspection.reject("non_finite_coordinate")
-                    continue
-                if np.any((coordinates[:, 0] < -180) | (coordinates[:, 0] > 180)) or np.any(
-                    (coordinates[:, 1] < -90) | (coordinates[:, 1] > 90)
-                ):
-                    inspection.reject("coordinate_out_of_range")
-                    continue
-                if bbox is not None:
-                    west, south, east, north = map(float, bbox)
-                    if (
-                        np.any(coordinates[:, 0] < west)
-                        or np.any(coordinates[:, 0] > east)
-                        or np.any(coordinates[:, 1] < south)
-                        or np.any(coordinates[:, 1] > north)
-                    ):
-                        inspection.reject("outside_configured_bounding_box")
-                        continue
-                timestamp = None
-                if timestamp_field:
-                    timestamp = _timestamp(row.get(str(timestamp_field)))
-                semantics = str(settings.get("timestamp_semantics", "unavailable"))
-                if timestamp is not None and semantics in {
-                    "start_time_plus_interval",
-                    "start_time_15s",
-                }:
-                    interval = float(settings.get("sampling_interval_s", 15.0))
-                    times = timestamp + np.arange(len(coordinates), dtype=np.float64) * interval
-                    points = np.column_stack((coordinates, times))
-                elif timestamp is not None:
-                    points = np.column_stack((coordinates, np.full(len(coordinates), timestamp)))
-                else:
-                    points = coordinates
-                source_id = str(
-                    row.get(trip_id_field) or row.get("TRIP_ID") or f"row-{row_number}"
+        for row_number, source_id, points, user_id, mode in _valid_porto_rows(
+            raw_path, settings, inspection
+        ):
+            occurrence = source_id_counts.get(source_id, 0)
+            source_id_counts[source_id] = occurrence + 1
+            trajectory_id = f"porto:{source_id}" if occurrence == 0 else f"porto:{source_id}:row-{row_number}"
+            if occurrence:
+                inspection.details["duplicate_source_ids"] = (
+                    inspection.details.get("duplicate_source_ids", 0) + 1
                 )
-                occurrence = source_id_counts.get(source_id, 0)
-                source_id_counts[source_id] = occurrence + 1
-                trajectory_id = f"porto:{source_id}" if occurrence == 0 else f"porto:{source_id}:row-{row_number}"
-                if occurrence:
-                    inspection.details["duplicate_source_ids"] = (
-                        inspection.details.get("duplicate_source_ids", 0) + 1
-                    )
-                user_id = row.get(str(settings.get("user_id_field", "user_id")))
-                mode = row.get(str(settings.get("mobility_mode_field", "MISSING")))
-                records.append(
-                    TrajectoryInput(
-                        trajectory_id,
-                        points,
-                        source_id=source_id,
-                        user_id=str(user_id) if user_id else None,
-                        mobility_mode=str(mode) if mode else None,
-                        quality_flags=("duplicate_source_id",) if occurrence else (),
-                    )
+            records.append(
+                TrajectoryInput(
+                    trajectory_id,
+                    points,
+                    source_id=source_id,
+                    user_id=user_id,
+                    mobility_mode=mode,
+                    quality_flags=("duplicate_source_id",) if occurrence else (),
                 )
-                inspection.accepted_records += 1
+            )
         return records, inspection
 
     def inspect_raw(self, raw_path: str | Path, **kwargs: Any) -> LoaderInspection:
@@ -239,6 +486,10 @@ class PortoLoader(BaseLoader):
     ) -> PreparationResult:
         path = Path(raw_path).resolve()
         settings = self._settings(**kwargs)
+        if bool(settings.get("streaming", False)):
+            result = _prepare_streaming_porto(path, Path(output_path), settings)
+            self.last_inspection = result.inspection
+            return result
         records, inspection = self._read(path, **kwargs)
         if not records:
             raise ValueError(

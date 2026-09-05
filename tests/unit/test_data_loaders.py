@@ -87,6 +87,28 @@ def test_porto_loader_preserves_duplicate_source_ids_with_unique_row_ids(tmp_pat
     assert result.inspection.details["duplicate_source_ids"] == 1
 
 
+def test_porto_loader_streaming_prepares_a_valid_canonical_dataset(tmp_path: Path) -> None:
+    raw = tmp_path / "porto_streaming.csv"
+    rows = ["TRIP_ID,TIMESTAMP,POLYLINE"]
+    for index in range(12):
+        rows.append(
+            f'p{index},{1700000000 + index * 60},"[[-8.61,41.15],[-8.60,41.16]]"'
+        )
+    raw.write_text("\n".join(rows) + "\n", encoding="utf-8")
+    result = PortoLoader(
+        {
+            "timestamp_field": "TIMESTAMP",
+            "timestamp_semantics": "start_time_plus_interval",
+            "projected_crs": "EPSG:32629",
+            "streaming": True,
+            "retrieval_scales": [],
+        }
+    ).prepare(raw, tmp_path / "prepared")
+    assert validate_dataset(result.output_path).ok
+    assert (result.output_path / "splits/standard/test.npy").exists()
+    assert (result.output_path / "splits/temporal/test.npy").exists()
+
+
 def test_geolife_loader_deduplicates_and_creates_user_split(tmp_path: Path) -> None:
     loader = GeoLifeLoader({"min_points": 2, "projected_crs": "EPSG:32650", "seed": 0})
     inspection = loader.inspect_raw(FIXTURES / "geolife_sample")
