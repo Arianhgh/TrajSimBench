@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import ast
 import csv
+import hashlib
 import json
 from collections.abc import Mapping
 from datetime import UTC, datetime
@@ -110,6 +111,14 @@ def _fixed_retrieval_splits(
             "query": ordered[database_count : database_count + query_count],
         }
     return result
+
+
+def _preprocessing_hash(settings: Mapping[str, Any]) -> str:
+    """Hash the effective frozen preparation settings for the dataset receipt."""
+
+    payload = {key: value for key, value in settings.items() if key != "preprocessing_config_hash"}
+    encoded = json.dumps(payload, default=str, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
 
 class PortoLoader(BaseLoader):
@@ -251,7 +260,9 @@ class PortoLoader(BaseLoader):
             source_license=settings.get("source_license", "See the supplied source terms"),
             redistribution_policy="raw input is user-supplied and not redistributed",
             raw_checksums={path.name: sha256_file(path)},
-            preprocessing_config_hash=settings.get("preprocessing_config_hash"),
+            preprocessing_config_hash=str(
+                settings.get("preprocessing_config_hash") or _preprocessing_hash(settings)
+            ),
             splits=split,
             min_points=int(settings.get("min_points", 2)),
         )

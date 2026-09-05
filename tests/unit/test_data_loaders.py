@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import numpy as np
@@ -60,6 +61,8 @@ def test_porto_loader_writes_disjoint_standard_temporal_and_retrieval_splits(tmp
     queries = set(np.load(output / "splits/retrieval_smoke/query.npy", allow_pickle=False))
     assert database.isdisjoint(queries)
     assert database | queries <= standard["test"]
+    manifest = json.loads((output / "dataset.json").read_text(encoding="utf-8"))
+    assert len(manifest["preprocessing_config_hash"]) == 64
 
 
 def test_geolife_loader_deduplicates_and_creates_user_split(tmp_path: Path) -> None:
