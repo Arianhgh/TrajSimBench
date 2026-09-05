@@ -37,7 +37,7 @@ def test_porto_loader_writes_disjoint_standard_temporal_and_retrieval_splits(tmp
         rows.append(
             f'p{index},{1700000000 + index * 60},"[[-8.61,41.15],[-8.60,41.16]]"'
         )
-    raw.write_text("\\n".join(rows) + "\\n", encoding="utf-8")
+    raw.write_text("\n".join(rows) + "\n", encoding="utf-8")
     loader = PortoLoader(
         {
             "timestamp_field": "TIMESTAMP",
