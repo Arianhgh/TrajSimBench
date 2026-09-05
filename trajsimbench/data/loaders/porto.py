@@ -146,6 +146,7 @@ class PortoLoader(BaseLoader):
         bbox = settings.get("bounding_box")
         records: list[TrajectoryInput] = []
         inspection = LoaderInspection(raw_path)
+        source_id_counts: dict[str, int] = {}
         with raw_path.open(
             "r", encoding=str(settings.get("encoding", "utf-8")), newline=""
         ) as handle:
@@ -200,17 +201,26 @@ class PortoLoader(BaseLoader):
                     points = np.column_stack((coordinates, np.full(len(coordinates), timestamp)))
                 else:
                     points = coordinates
-                source_id = row.get(trip_id_field) or row.get("TRIP_ID") or f"row-{row_number}"
-                trajectory_id = f"porto:{source_id}"
+                source_id = str(
+                    row.get(trip_id_field) or row.get("TRIP_ID") or f"row-{row_number}"
+                )
+                occurrence = source_id_counts.get(source_id, 0)
+                source_id_counts[source_id] = occurrence + 1
+                trajectory_id = f"porto:{source_id}" if occurrence == 0 else f"porto:{source_id}:row-{row_number}"
+                if occurrence:
+                    inspection.details["duplicate_source_ids"] = (
+                        inspection.details.get("duplicate_source_ids", 0) + 1
+                    )
                 user_id = row.get(str(settings.get("user_id_field", "user_id")))
                 mode = row.get(str(settings.get("mobility_mode_field", "MISSING")))
                 records.append(
                     TrajectoryInput(
                         trajectory_id,
                         points,
-                        source_id=str(source_id),
+                        source_id=source_id,
                         user_id=str(user_id) if user_id else None,
                         mobility_mode=str(mode) if mode else None,
+                        quality_flags=("duplicate_source_id",) if occurrence else (),
                     )
                 )
                 inspection.accepted_records += 1

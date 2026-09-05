@@ -4,6 +4,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from trajsimbench.data.dataset import TrajectoryDataset
 from trajsimbench.data.loaders.geolife import GeoLifeLoader
 from trajsimbench.data.loaders.germany import DatasetGateError, GermanyLoader
 from trajsimbench.data.loaders.porto import PortoLoader
@@ -63,6 +64,27 @@ def test_porto_loader_writes_disjoint_standard_temporal_and_retrieval_splits(tmp
     assert database | queries <= standard["test"]
     manifest = json.loads((output / "dataset.json").read_text(encoding="utf-8"))
     assert len(manifest["preprocessing_config_hash"]) == 64
+
+
+def test_porto_loader_preserves_duplicate_source_ids_with_unique_row_ids(tmp_path: Path) -> None:
+    raw = tmp_path / "porto_duplicates.csv"
+    raw.write_text(
+        "TRIP_ID,TIMESTAMP,POLYLINE\n"
+        'repeat,1700000000,"[[-8.61,41.15],[-8.60,41.16]]"\n'
+        'repeat,1700000060,"[[-8.61,41.15],[-8.60,41.16]]"\n',
+        encoding="utf-8",
+    )
+    result = PortoLoader(
+        {
+            "timestamp_field": "TIMESTAMP",
+            "timestamp_semantics": "start_time_plus_interval",
+            "projected_crs": "EPSG:32629",
+        }
+    ).prepare(raw, tmp_path / "prepared")
+    metadata = TrajectoryDataset.open(result.output_path).metadata
+    assert metadata["trajectory_id"].tolist() == ["porto:repeat", "porto:repeat:row-3"]
+    assert metadata["source_id"].tolist() == ["repeat", "repeat"]
+    assert result.inspection.details["duplicate_source_ids"] == 1
 
 
 def test_geolife_loader_deduplicates_and_creates_user_split(tmp_path: Path) -> None:
