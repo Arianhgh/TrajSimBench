@@ -2,6 +2,8 @@ name: porto
 version: v1
 enabled: true
 raw_path: data/raw/porto.csv
+source_name: Taxi Service Trajectory - Prediction Challenge, ECML PKDD 2015
+source_url: https://archive.ics.uci.edu/dataset/339/taxi%2Bservice%2Btrajectory%2Bprediction%2Bchallenge%2Becml%2Bpkdd%2B2015
 polyline_field: POLYLINE
 trip_id_field: TRIP_ID
 timestamp_field: TIMESTAMP
@@ -13,5 +15,5 @@ min_points: 2
 max_points: 10000
 projected_crs: EPSG:32629
 has_timestamps: true
-source_license: source terms required
+source_license: CC BY 4.0; cite UCI DOI 10.24432/C55W25
 redistribution_policy: raw input remains outside Git

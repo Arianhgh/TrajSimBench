@@ -1,0 +1,13 @@
+name: ais
+version: v1
+enabled: false
+status: requires_source_decision
+raw_path: data/raw/ais
+source_name: Marine Cadastre vessel traffic source
+source_url: https://hub.marinecadastre.gov/pages/vesseltraffic
+min_points: 2
+projected_crs: pending_fixed_region
+has_timestamps: true
+deduplicate_policy: drop_consecutive
+source_license: pending selected source release, geographic bounds, dates, vessel rules, and terms
+redistribution_policy: raw input remains outside Git

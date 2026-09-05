@@ -44,7 +44,9 @@ def acquisition_report(dataset: str, config_path: str | Path | None = None) -> d
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("dataset", choices=("synthetic", "porto", "geolife", "germany"))
+    parser.add_argument(
+        "dataset", choices=("synthetic", "porto", "geolife", "tdrive", "ais", "germany")
+    )
     parser.add_argument("--config")
     args = parser.parse_args()
     import json

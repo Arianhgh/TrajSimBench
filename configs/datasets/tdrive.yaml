@@ -1,0 +1,13 @@
+name: tdrive
+version: v1
+enabled: false
+status: requires_license_confirmation
+raw_path: data/raw/tdrive
+source_name: T-Drive trajectory data sample
+source_url: https://www.microsoft.com/en-us/research/publication/t-drive-trajectory-data-sample/
+min_points: 2
+projected_crs: EPSG:32650
+has_timestamps: true
+deduplicate_policy: drop_consecutive
+source_license: Microsoft Research download and license terms must be reviewed and accepted
+redistribution_policy: raw input remains outside Git

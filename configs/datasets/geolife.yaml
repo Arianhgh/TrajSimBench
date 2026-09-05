@@ -1,10 +1,13 @@
 name: geolife
 version: v1
-enabled: true
+enabled: false
+status: requires_license_confirmation
 raw_path: data/raw/geolife
+source_name: GeoLife GPS Trajectories
+source_url: https://www.microsoft.com/en-us/research/publication/geolife-gps-trajectory-dataset-user-guide/
 min_points: 2
 projected_crs: EPSG:32650
 has_timestamps: true
 deduplicate_policy: drop_consecutive
-source_license: official GeoLife terms required
+source_license: official GeoLife download terms must be recorded before preparation
 redistribution_policy: raw input remains outside Git

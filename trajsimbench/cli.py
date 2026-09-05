@@ -22,7 +22,7 @@ from trajsimbench.orchestration.runner import (
 from trajsimbench.storage.artifacts import validate_run_directory
 
 KNOWN_METHODS = ("euclidean", "dtw", "hausdorff", "discrete_frechet", "lcss", "edr", "erp")
-KNOWN_DATASETS = ("synthetic", "porto", "geolife", "germany")
+KNOWN_DATASETS = ("synthetic", "porto", "geolife", "tdrive", "ais", "germany")
 
 
 def _json_print(value: Any) -> None:
