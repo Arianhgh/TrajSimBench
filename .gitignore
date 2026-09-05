@@ -20,6 +20,9 @@ data/processed/*
 results/*
 !results/.gitkeep
 analysis*/
+# Keep the source package tracked; only generated analysis output is ignored.
+!trajsimbench/analysis/
+!trajsimbench/analysis/**
 *.parquet
 *.npy
 *.npz
