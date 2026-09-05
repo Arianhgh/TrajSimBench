@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from trajsimbench.data.loaders.geolife import GeoLifeLoader
@@ -27,6 +28,38 @@ def test_porto_loader_counts_malformed_rows_and_prepares(tmp_path: Path) -> None
     result = loader.prepare(FIXTURES / "porto_sample.csv", tmp_path / "porto")
     assert result.output_path.exists()
     assert validate_dataset(result.output_path).ok
+
+
+def test_porto_loader_writes_disjoint_standard_temporal_and_retrieval_splits(tmp_path: Path) -> None:
+    raw = tmp_path / "porto.csv"
+    rows = ["TRIP_ID,TIMESTAMP,POLYLINE"]
+    for index in range(12):
+        rows.append(
+            f'p{index},{1700000000 + index * 60},"[[-8.61,41.15],[-8.60,41.16]]"'
+        )
+    raw.write_text("\\n".join(rows) + "\\n", encoding="utf-8")
+    loader = PortoLoader(
+        {
+            "timestamp_field": "TIMESTAMP",
+            "timestamp_semantics": "start_time_plus_interval",
+            "sampling_interval_s": 15,
+            "projected_crs": "EPSG:32629",
+            "retrieval_scales": [{"name": "smoke", "database_count": 2, "query_count": 1}],
+        }
+    )
+    output = loader.prepare(raw, tmp_path / "prepared").output_path
+    standard = {
+        partition: set(np.load(output / "splits/standard" / f"{partition}.npy", allow_pickle=False))
+        for partition in ("train", "val", "test")
+    }
+    assert len(standard["train"] | standard["val"] | standard["test"]) == 12
+    assert not (standard["train"] & standard["val"] or standard["train"] & standard["test"])
+    temporal_train = np.load(output / "splits/temporal/train.npy", allow_pickle=False).tolist()
+    assert temporal_train == [f"porto:p{index}" for index in range(8)]
+    database = set(np.load(output / "splits/retrieval_smoke/database.npy", allow_pickle=False))
+    queries = set(np.load(output / "splits/retrieval_smoke/query.npy", allow_pickle=False))
+    assert database.isdisjoint(queries)
+    assert database | queries <= standard["test"]
 
 
 def test_geolife_loader_deduplicates_and_creates_user_split(tmp_path: Path) -> None:

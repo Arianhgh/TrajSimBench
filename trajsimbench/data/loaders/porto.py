@@ -21,6 +21,7 @@ from trajsimbench.data.checksums import sha256_file
 from trajsimbench.data.dataset import write_canonical_dataset
 from trajsimbench.data.loaders.base import BaseLoader, LoaderInspection, PreparationResult
 from trajsimbench.data.schema import TrajectoryInput
+from trajsimbench.data.splitting import SCALE_LIMITS, make_split_bundle, stable_id_order
 
 
 def _timestamp(value: Any) -> float | None:
@@ -68,6 +69,47 @@ def _polyline(value: str, sentinel: str | None = None) -> np.ndarray | None:
             return None
         coordinates.append((longitude, latitude))
     return np.asarray(coordinates, dtype=np.float64) if coordinates else None
+
+
+def _fixed_retrieval_splits(
+    ids: list[str], *, settings: Mapping[str, Any]
+) -> dict[str, dict[str, list[str]]]:
+    """Create named, non-overlapping query/database sets from a fixed pool."""
+
+    configured = settings.get("retrieval_scales", ())
+    if not configured:
+        return {}
+    if not isinstance(configured, (list, tuple)):
+        raise ValueError("retrieval_scales must be a list of scale names or mappings")
+    seed = int(settings.get("query_database_seed", 2025))
+    ordered = stable_id_order(ids, seed=seed)
+    result: dict[str, dict[str, list[str]]] = {}
+    for entry in configured:
+        if isinstance(entry, str):
+            if entry not in SCALE_LIMITS:
+                raise ValueError(f"unknown retrieval scale {entry!r}")
+            name = entry
+            database_count, query_count = SCALE_LIMITS[entry]
+        elif isinstance(entry, Mapping):
+            name = str(entry.get("name", "")).strip()
+            if not name:
+                raise ValueError("custom retrieval scale needs a non-empty name")
+            database_count = int(entry["database_count"])
+            query_count = int(entry["query_count"])
+        else:
+            raise ValueError("each retrieval scale must be a name or mapping")
+        if database_count < 1 or query_count < 1:
+            raise ValueError("retrieval database_count and query_count must both be positive")
+        if database_count + query_count > len(ordered):
+            raise ValueError(
+                f"retrieval scale {name!r} needs {database_count + query_count} test trajectories "
+                f"but only {len(ordered)} are available; reduce the declared scale explicitly"
+            )
+        result[f"retrieval_{name}"] = {
+            "database": ordered[:database_count],
+            "query": ordered[database_count : database_count + query_count],
+        }
+    return result
 
 
 class PortoLoader(BaseLoader):
@@ -184,7 +226,20 @@ class PortoLoader(BaseLoader):
                 f"Porto preparation produced no valid trajectories: {inspection.rejected_by_reason}"
             )
         ids = [record.trajectory_id for record in records]
-        split = {"standard": {"train": ids}}
+        temporal_records = [
+            {
+                "trajectory_id": record.trajectory_id,
+                "start_time_s": float(record.points[0, 2]),
+            }
+            for record in records
+        ]
+        split = make_split_bundle(
+            ids,
+            seed=int(settings.get("split_seed", 2025)),
+            records=temporal_records,
+            include_temporal=True,
+        )
+        split.update(_fixed_retrieval_splits(split["standard"]["test"], settings=settings))
         output = write_canonical_dataset(
             output_path,
             records,
